@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unit Dashboard | Sakura Elite</title>
+    <link rel="stylesheet" href="home.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Sakura Elite</h1>
+            <div class="user-info">
+                <span id="unitDisplay">Unit: --</span>
+                <button id="logoutBtn" class="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <main class="dashboard-content">
+            <div class="loading" id="loading">Loading your information...</div>
+            <div class="error-message" id="errorMessage"></div>
+
+            <div id="unitInfo" style="display: none;">
+                <!-- Unit Overview Card -->
+                <div class="card">
+                    <h2>Unit Information</h2>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Unit Number:</span>
+                            <span class="value" id="unitNumber">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Number of Tenants:</span>
+                            <span class="value" id="numTenants">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Number of Cars:</span>
+                            <span class="value" id="numCars">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tenants Card -->
+                <div class="card">
+                    <h2>Tenants</h2>
+                    <div id="tenantsList" class="tenants-list">
+                        <!-- Tenants will be dynamically added here -->
+                    </div>
+                </div>
+
+                <!-- Monthly History Card -->
+                <div class="card">
+                    <h2>Payment History</h2>
+                    <div class="history-container">
+                        <div class="month-selector">
+                            <button id="prevMonth" class="month-nav-btn">← Previous</button>
+                            <span id="currentMonth" class="current-month">--</span>
+                            <button id="nextMonth" class="month-nav-btn">Next →</button>
+                        </div>
+                        <div id="monthlyData" class="monthly-data">
+                            <!-- Monthly data will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- All History Table -->
+                <div class="card">
+                    <h2>Complete History</h2>
+                    <div class="table-container">
+                        <table id="historyTable">
+                            <thead>
+                                <tr>
+                                    <th>Month/Year</th>
+                                    <th>Rent</th>
+                                    <th>Water Bill</th>
+                                    <th>Maintenance</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Paid Date</th>
+                                    <th>Payment Method</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- History rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="home.js"></script>
+</body>
+</html>
