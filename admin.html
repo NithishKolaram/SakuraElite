@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin | Sakura Elite</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <header class="admin-header">
+            <h1>Admin Dashboard</h1>
+            <div class="header-actions">
+                <span id="currentMonthDisplay"></span>
+                <button class="logout-btn" onclick="window.location.href='water-management.html'">Water</button>
+                <button class="logout-btn" onclick="window.location.href='maintenance-management.html'">Maintenance</button>
+                <button id="logoutBtn" class="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <main class="admin-content">
+            <div class="loading" id="loading">Loading units...</div>
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+
+            <!-- Current Month Management -->
+            <div class="card" id="currentMonthCard" style="display: none;">
+                <div class="card-header">
+                    <h2>Current Month Billing (November 2025)</h2>
+                    <button id="autoGenerateBtn" class="primary-btn">Auto-Generate This Month</button>
+                </div>
+                <div class="table-container">
+                    <table id="currentMonthTable">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th>Rent (₹)</th>
+                                <th>Water Bill (₹)</th>
+                                <th>Maintenance (₹)</th>
+                                <th>Corpus (₹)</th>
+                                <th>Total (₹)</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="currentMonthBody">
+                            <!-- Will be populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- All Units Overview -->
+            <div class="card" id="allUnitsCard" style="display: none;">
+                <h2>All Units - Base Information</h2>
+                <div class="table-container">
+                    <table id="unitsTable">
+                        <thead>
+                            <tr>
+                                <th>Unit</th>
+                                <th>Tenants</th>
+                                <th>Cars</th>
+                                <th>Two-Wheelers</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unitsTableBody">
+                            <!-- Will be populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Tenant Names Modal -->
+    <div id="tenantModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="tenantModalTitle">Edit Tenant Names</h3>
+                <span class="close" onclick="closeTenantModal()">&times;</span>
+            </div>
+            <div style="padding: 32px;">
+                <input type="hidden" id="tenantModalUnit">
+                <div class="form-group">
+                    <label>Tenant Names (one per line)</label>
+                    <textarea id="tenantNamesTextarea" rows="6" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-family: inherit; font-size: 14px; resize: vertical;" placeholder="Enter tenant names, one per line"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn" onclick="closeTenantModal()">Cancel</button>
+                    <button type="button" class="primary-btn" onclick="saveTenantNames()">Save Names</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
