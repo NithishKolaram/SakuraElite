@@ -20,28 +20,26 @@ app.use(cors());
 app.use(express.json());
 
 // Serve static files from current directory
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve index.html at root
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Serve HTML files explicitly
 app.get('/admin.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 app.get('/home.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'home.html'));
+  res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
 app.get('/water-management.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'water-management.html'));
+  res.sendFile(path.join(__dirname, 'public', 'water-management.html'));
 });
 
 app.get('/maintenance-management.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'maintenance-management.html'));
+  res.sendFile(path.join(__dirname, 'public', 'maintenance-management.html'));
 });
 
 const pool = new Pool({
