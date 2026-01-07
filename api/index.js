@@ -19,35 +19,12 @@ const razorpay = new Razorpay({
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from current directory
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/admin.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
-
-app.get('/home.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'home.html'));
-});
-
-app.get('/water-management.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'water-management.html'));
-});
-
-app.get('/maintenance-management.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'maintenance-management.html'));
-});
-
+// NEW:
 const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_DATABASE,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT,
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
 })
 
 // Test the connection
@@ -855,8 +832,11 @@ app.post('/api/payment/verify', async (req, res) => {
     const corpusAmount = parseFloat(payment.corpus || 0);
     
     if (maintenanceAmount > 0 || corpusAmount > 0) {
-      // Refresh maintenance collected amounts
-      await fetch('/api/maintenance/refresh-collected', {
+      const refreshUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}/api/maintenance/refresh-collected`
+        : '/api/maintenance/refresh-collected';
+
+    await fetch(refreshUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month_year: payment.month_year })
@@ -897,8 +877,5 @@ app.get('/api/payment/details/:unitNumber/:monthYear', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Open http://localhost:${PORT} in your browser to access the application`);
-});
+// ADD:
+module.exports = app;
