@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unit Dashboard | Sakura Elite</title>
+    <link rel="stylesheet" href="home.css">
+    <!-- Razorpay Checkout Script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Sakura Elite</h1>
+            <div class="user-info">
+                <span id="unitDisplay">Unit: --</span>
+                <button id="logoutBtn" class="logout-btn">Logout</button>
+            </div>
+        </header>
+
+        <main class="dashboard-content">
+            <div class="loading" id="loading">Loading your information...</div>
+            <div class="error-message" id="errorMessage"></div>
+
+            <div id="unitInfo" style="display: none;">
+                <!-- Unit Overview Card -->
+                <div class="card unit-info-card">
+                    <h2>Unit Information</h2>
+                    <div class="info-grid-modern">
+                        <div class="info-card">
+                            <div class="info-card-label">Unit Number</div>
+                            <div class="info-card-value" id="unitNumber">--</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-card-label">Number of Tenants</div>
+                            <div class="info-card-value" id="numTenants">--</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-card-label">Number of Cars</div>
+                            <div class="info-card-value" id="numCars">--</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-card-label">Two-Wheelers</div>
+                            <div class="info-card-value" id="numTwoWheelers">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monthly History Card -->
+                <div class="card">
+                    <h2>Payment History</h2>
+                    <div class="history-container">
+                        <div class="month-selector">
+                            <button id="prevMonth" class="month-nav-btn">← Previous</button>
+                            <span id="currentMonth" class="current-month">--</span>
+                            <button id="nextMonth" class="month-nav-btn">Next →</button>
+                        </div>
+                        <div id="monthlyData" class="monthly-data">
+                            <!-- Monthly data will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Complete History Table with Search -->
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h2 style="margin-bottom: 0;">Complete History</h2>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <select id="searchMonth" style="padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
+                                <option value="">Filter by Month</option>
+                            </select>
+                            <select id="searchYear" style="padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
+                                <option value="">Filter by Year</option>
+                            </select>
+                            <button id="clearSearch" class="primary-btn" style="padding: 8px 16px;">Clear Filter</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="historyTable">
+                            <thead>
+                                <tr>
+                                    <th>Month/Year</th>
+                                    <th>Rent</th>
+                                    <th>Water Bill</th>
+                                    <th>Maintenance</th>
+                                    <th>Corpus</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Paid Date</th>
+                                    <th>Payment Method</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- History rows will be added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tenants & Vehicles Card -->
+                <div class="card tenants-card">
+                    <h2>Tenant Names & Vehicles</h2>
+                    <div id="tenantsList" class="tenants-list-modern">
+                        <!-- Tenants will be dynamically added here -->
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap;">
+                        <button id="editTenantsBtn" class="primary-btn">Edit Tenant Names</button>
+                        <button id="editCarsBtn" class="primary-btn">Edit Cars</button>
+                        <button id="editTwoWheelersBtn" class="primary-btn">Edit Two-Wheelers</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Tenant Edit Modal -->
+    <div id="tenantEditModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Tenant Names</h3>
+                <span class="close" onclick="closeTenantEditModal()">&times;</span>
+            </div>
+            <div style="padding: 32px;">
+                <div class="form-group">
+                    <label>Tenant Names (one per line)</label>
+                    <textarea id="tenantEditTextarea" rows="6" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-family: inherit; font-size: 14px; resize: vertical;" placeholder="Enter tenant names, one per line"></textarea>
+                    <p style="font-size: 13px; color: #666; margin-top: 8px;">Tip: Press Enter after each name to add a new tenant</p>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn" onclick="closeTenantEditModal()">Cancel</button>
+                    <button type="button" class="primary-btn" onclick="saveTenantNamesFromModal()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cars Edit Modal -->
+    <div id="carsEditModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Number of Cars</h3>
+                <span class="close" onclick="closeCarsEditModal()">&times;</span>
+            </div>
+            <div style="padding: 32px;">
+                <div class="form-group">
+                    <label>Number of Cars</label>
+                    <input type="number" id="carsEditInput" min="0" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-family: inherit; font-size: 14px;" placeholder="Enter number of cars">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn" onclick="closeCarsEditModal()">Cancel</button>
+                    <button type="button" class="primary-btn" onclick="saveCarsFromModal()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Two-Wheelers Edit Modal -->
+    <div id="twoWheelersEditModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Number of Two-Wheelers</h3>
+                <span class="close" onclick="closeTwoWheelersEditModal()">&times;</span>
+            </div>
+            <div style="padding: 32px;">
+                <div class="form-group">
+                    <label>Number of Two-Wheelers</label>
+                    <input type="number" id="twoWheelersEditInput" min="0" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-family: inherit; font-size: 14px;" placeholder="Enter number of two-wheelers">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn" onclick="closeTwoWheelersEditModal()">Cancel</button>
+                    <button type="button" class="primary-btn" onclick="saveTwoWheelersFromModal()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="home.js"></script>
+</body>
+</html>
