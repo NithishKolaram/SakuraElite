@@ -63,37 +63,73 @@
 
                 <!-- Complete History Table with Search -->
                 <div class="card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                        <h2 style="margin-bottom: 0;">Complete History</h2>
-                        <div style="display: flex; gap: 12px; align-items: center;">
-                            <select id="searchMonth" style="padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
-                                <option value="">Filter by Month</option>
-                            </select>
-                            <select id="searchYear" style="padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px;">
-                                <option value="">Filter by Year</option>
-                            </select>
-                            <button id="clearSearch" class="primary-btn" style="padding: 8px 16px;">Clear Filter</button>
+                    <div class="history-header">
+                        <div>
+                            <h2 style="margin-bottom: 0;">Complete Payment History</h2>
+                            <p style="margin-top: 4px; color: #666; font-size: 13px;">View and manage all your payment records</p>
+                        </div>
+                        <div class="filter-section">
+                            <div class="filter-controls">
+                                <div class="filter-group">
+                                    <label for="searchMonth" style="font-size: 12px; color: #666; margin-bottom: 4px;">Filter by Month</label>
+                                    <select id="searchMonth" class="modern-select">
+                                        <option value="">All Months</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <label for="searchYear" style="font-size: 12px; color: #666; margin-bottom: 4px;">Filter by Year</label>
+                                    <select id="searchYear" class="modern-select">
+                                        <option value="">All Years</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <label style="font-size: 12px; color: #666; margin-bottom: 4px; opacity: 0;">.</label>
+                                    <button id="clearSearch" class="clear-filter-btn">
+                                        <span style="margin-right: 6px;">×</span> Clear Filters
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    
                     <div class="table-container">
-                        <table id="historyTable">
+                        <table id="historyTable" class="modern-table">
                             <thead>
                                 <tr>
-                                    <th>Month/Year</th>
-                                    <th>Rent</th>
-                                    <th>Water Bill</th>
-                                    <th>Maintenance</th>
-                                    <th>Corpus</th>
-                                    <th>Total</th>
-                                    <th>Status</th>
-                                    <th>Paid Date</th>
-                                    <th>Payment Method</th>
-                                    <th>Actions</th>
+                                    <th style="width: 120px;">Month/Year</th>
+                                    <th style="width: 100px;">Rent</th>
+                                    <th style="width: 100px;">Water</th>
+                                    <th style="width: 110px;">Maintenance</th>
+                                    <th style="width: 100px;">Corpus</th>
+                                    <th style="width: 100px;">Total</th>
+                                    <th style="width: 90px;">Status</th>
+                                    <th style="width: 100px;">Paid Date</th>
+                                    <th style="width: 120px;">Method</th>
+                                    <th style="width: 100px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="historyTableBody">
-                                <!-- History rows will be added here -->
+                                <tr>
+                                    <td colspan="10" style="text-align: center; padding: 40px;">
+                                        <div style="color: #999; font-size: 14px;">
+                                            <div style="margin-bottom: 8px;">📊</div>
+                                            Loading payment history...
+                                        </div>
+                                    </td>
+                                </tr>
                             </tbody>
+                            <tfoot id="historyTableFooter" style="display: none;">
+                                <tr>
+                                    <td colspan="5" style="text-align: right; padding: 12px 16px; font-weight: 600; color: #4a4a4a;">
+                                        Showing <span id="filteredCount">0</span> of <span id="totalCount">0</span> records
+                                    </td>
+                                    <td colspan="5" style="padding: 12px 16px; text-align: right;">
+                                        <button id="exportHistoryBtn" class="export-btn">
+                                            📥 Export to CSV
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>

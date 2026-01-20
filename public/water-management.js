@@ -10,6 +10,13 @@ const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
 const currentMonthDisplay = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
 
 document.getElementById('currentMonthDisplay').textContent = currentMonthDisplay;
+const monthDisplay2 = document.getElementById('currentMonthDisplay2');
+const monthDisplay3 = document.getElementById('currentMonthDisplay3');
+
+if (monthDisplay2) monthDisplay2.textContent = currentMonthDisplay;
+if (monthDisplay3) monthDisplay3.textContent = currentMonthDisplay;
+
+document.getElementById('currentMonthDisplay').textContent = currentMonthDisplay;
 
 let pricePerLiter = 0;
 
@@ -255,3 +262,69 @@ function showError(message) {
 
 // Load on page load
 loadAll();
+
+// Auto-refresh for water management
+let waterAutoRefreshInterval;
+
+function startWaterAutoRefresh() {
+  if (waterAutoRefreshInterval) {
+    clearInterval(waterAutoRefreshInterval);
+  }
+  
+  // Set interval for auto-refresh (every 30 seconds)
+  waterAutoRefreshInterval = setInterval(loadAll, 30000);
+}
+
+// Add month check
+async function checkCurrentMonth() {
+  const now = new Date();
+  const currentMonth = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const currentMonthDisplay = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+  
+  // Update display
+  document.getElementById('currentMonthDisplay').textContent = currentMonthDisplay;
+  
+  // Check if water readings exist for this month, if not, create them
+  try {
+    const response = await fetch(`/api/water/readings?monthYear=${encodeURIComponent(currentMonth)}`);
+    const result = await response.json();
+    
+    if (result.success && result.data.length === 0) {
+      // No readings for this month, create empty ones
+      await initializeWaterReadingsForMonth(currentMonth);
+    }
+  } catch (error) {
+    console.error('Error checking water readings:', error);
+  }
+}
+
+async function initializeWaterReadingsForMonth(monthYear) {
+  try {
+    // Get all units
+    const unitsResponse = await fetch('/api/admin/units');
+    const unitsResult = await unitsResponse.json();
+    
+    if (unitsResult.success) {
+      // Create empty readings for each unit
+      // Note: You'll need to create an API endpoint for this
+      console.log(`Would create water readings for ${monthYear}`);
+    }
+  } catch (error) {
+    console.error('Error initializing water readings:', error);
+  }
+}
+
+// Update loadAll function
+function loadAll() {
+  checkCurrentMonth();
+  loadSummary();
+  loadTankerHistory();
+  loadMeterReadings();
+}
+
+// Update on page load
+window.addEventListener('load', () => {
+  loadAll();
+  startWaterAutoRefresh();
+});

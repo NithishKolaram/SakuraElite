@@ -856,7 +856,7 @@ app.post('/api/payment/verify', async (req, res) => {
     
     if (maintenanceAmount > 0 || corpusAmount > 0) {
       // Refresh maintenance collected amounts
-      await fetch('/api/maintenance/refresh-collected', {
+      await fetch('http://localhost:3000/api/maintenance/refresh-collected', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month_year: payment.month_year })
@@ -893,6 +893,131 @@ app.get('/api/payment/details/:unitNumber/:monthYear', async (req, res) => {
     
   } catch (error) {
     console.error('Error:', error);
+    res.status(500).json({ success: false, error: 'Database error' });
+  }
+});
+
+// server.js - Add this function before the app.listen() section
+
+// Function to check and auto-generate new month billing
+async function checkAndGenerateNewMonth() {
+  try {
+    const now = new Date();
+    const currentMonth = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+    
+    console.log(`Checking for month generation: ${currentMonth}`);
+    
+    // Check if billing exists for current month
+    const existing = await pool.query(
+      'SELECT COUNT(*) FROM payment_history WHERE month_year = $1',
+      [currentMonth]
+    );
+    
+    if (parseInt(existing.rows[0].count) === 0) {
+      console.log(`Generating billing for ${currentMonth}...`);
+      
+      // Check if we should carry forward balances from previous month
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const previousMonthStr = `${String(previousMonth.getMonth() + 1).padStart(2, '0')}/${previousMonth.getFullYear()}`;
+      
+      // Get all units
+      const units = await pool.query('SELECT * FROM units ORDER BY unit_number');
+      
+      // Generate billing for each unit
+      const insertPromises = units.rows.map(async (unit) => {
+        // Calculate water bill based on average or fixed amount
+        const waterBill = (Math.random() * (60 - 35) + 35).toFixed(2);
+        
+        // Check for previous month's unpaid maintenance/corpus to carry forward
+        const previousPayment = await pool.query(
+          'SELECT * FROM payment_history WHERE unit_number = $1 AND month_year = $2',
+          [unit.unit_number, previousMonthStr]
+        );
+        
+        let maintenance = 0;
+        let corpus = 0;
+        
+        // If previous month exists and was unpaid, carry forward maintenance/corpus
+        if (previousPayment.rows.length > 0 && previousPayment.rows[0].status === 'pending') {
+          const prev = previousPayment.rows[0];
+          maintenance = parseFloat(prev.maintenance) || 0;
+          corpus = parseFloat(prev.corpus) || 0;
+          
+          console.log(`Carrying forward for ${unit.unit_number}: M=${maintenance}, C=${corpus}`);
+        }
+        
+        return pool.query(
+          'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [unit.unit_number, currentMonth, unit.rent, waterBill, maintenance, corpus, 'pending']
+        );
+      });
+      
+      await Promise.all(insertPromises);
+      console.log(`✓ Auto-generated billing for ${currentMonth}`);
+      
+      // Also carry forward maintenance balance
+      await autoCarryForwardMaintenance(previousMonthStr, currentMonth);
+    }
+  } catch (err) {
+    console.error('Error in auto-month generation:', err);
+  }
+}
+
+// Function to auto-carry forward maintenance balance
+async function autoCarryForwardMaintenance(fromMonth, toMonth) {
+  try {
+    // Get current month balance
+    const currentResult = await pool.query(
+      'SELECT * FROM maintenance_balance WHERE month_year = $1',
+      [fromMonth]
+    );
+    
+    if (currentResult.rows.length > 0) {
+      const currentBalance = currentResult.rows[0];
+      const closingBalance = parseFloat(currentBalance.closing_balance);
+      
+      // Mark current month as carried forward
+      await pool.query(
+        'UPDATE maintenance_balance SET carried_forward = true WHERE month_year = $1',
+        [fromMonth]
+      );
+      
+      // Create or update next month with opening balance
+      await pool.query(
+        `INSERT INTO maintenance_balance (month_year, opening_balance, total_collected, total_expenses, closing_balance)
+         VALUES ($1, $2, 0, 0, $2)
+         ON CONFLICT (month_year)
+         DO UPDATE SET opening_balance = $2, closing_balance = maintenance_balance.total_collected - maintenance_balance.total_expenses + $2`,
+        [toMonth, closingBalance]
+      );
+      
+      console.log(`✓ Auto-carried forward maintenance balance from ${fromMonth} to ${toMonth}: ${closingBalance}`);
+    }
+  } catch (err) {
+    console.error('Error in auto-carry forward:', err);
+  }
+}
+
+// Check for new month generation on server start
+setTimeout(() => {
+  checkAndGenerateNewMonth();
+}, 2000);
+
+// Also check daily at 00:05 AM
+setInterval(() => {
+  const now = new Date();
+  if (now.getHours() === 0 && now.getMinutes() === 5) {
+    checkAndGenerateNewMonth();
+  }
+}, 60000); // Check every minute
+
+// Add this endpoint to manually trigger month generation
+app.post('/api/admin/auto-generate-check', async (req, res) => {
+  try {
+    await checkAndGenerateNewMonth();
+    res.json({ success: true, message: 'Month generation check completed' });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, error: 'Database error' });
   }
 });

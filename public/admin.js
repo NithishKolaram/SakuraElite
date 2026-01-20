@@ -1,25 +1,19 @@
-// Check if admin is logged in
+// admin.js - UPDATED VERSION
+
 if (!sessionStorage.getItem('isAdmin')) {
     window.location.href = 'index.html';
 }
 
-// Get current month/year
-const now = new Date();
-const currentMonth = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+let currentViewMonth = new Date();
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const currentMonthDisplay = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
-
-document.getElementById('currentMonthDisplay').textContent = currentMonthDisplay;
 
 let allUnits = [];
 let currentMonthData = [];
 
-// Format currency in rupees
 function formatRupees(amount) {
     return `₹${parseFloat(amount).toFixed(2)}`;
 }
 
-// Debounce function for auto-save
 function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -32,7 +26,6 @@ function debounce(func, wait) {
     };
 }
 
-// Update unit info
 async function updateUnitInfo(unitNumber, field, value) {
     try {
         const response = await fetch(`/api/admin/unit/${unitNumber}`, {
@@ -40,9 +33,7 @@ async function updateUnitInfo(unitNumber, field, value) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [field]: value })
         });
-
         const result = await response.json();
-
         if (result.success) {
             showSuccess(`${field} updated for ${unitNumber}`);
         } else {
@@ -56,7 +47,6 @@ async function updateUnitInfo(unitNumber, field, value) {
     }
 }
 
-// Update payment info
 async function updatePayment(recordId, field, value) {
     try {
         const response = await fetch(`/api/admin/payment/${recordId}`, {
@@ -64,9 +54,7 @@ async function updatePayment(recordId, field, value) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ [field]: value })
         });
-
         const result = await response.json();
-
         if (result.success) {
             showSuccess(`Payment ${field} updated`);
             loadAdminData();
@@ -81,14 +69,36 @@ async function updatePayment(recordId, field, value) {
     }
 }
 
-// Create debounced update functions
 const debouncedUnitUpdate = debounce(updateUnitInfo, 1000);
 const debouncedPaymentUpdate = debounce(updatePayment, 1000);
 
-// Load all data
+function getCurrentMonthString() {
+    return `${String(currentViewMonth.getMonth() + 1).padStart(2, '0')}/${currentViewMonth.getFullYear()}`;
+}
+
+function getCurrentMonthDisplay() {
+    return `${monthNames[currentViewMonth.getMonth()]} ${currentViewMonth.getFullYear()}`;
+}
+
+// FIXED: Safe element updates
+function updateMonthDisplay() {
+    const display = getCurrentMonthDisplay();
+    
+    // Only update if elements exist
+    const monthDisplayEl = document.getElementById('currentMonthDisplay');
+    const monthSpanEl = document.getElementById('currentMonthSpan');
+    
+    if (monthDisplayEl) {
+        monthDisplayEl.textContent = display;
+    }
+    
+    if (monthSpanEl) {
+        monthSpanEl.textContent = display;
+    }
+}
+
 async function loadAdminData() {
     try {
-        // Load all units
         const unitsResponse = await fetch('/api/admin/units');
         const unitsResult = await unitsResponse.json();
         
@@ -97,8 +107,8 @@ async function loadAdminData() {
             populateUnitsTable();
         }
 
-        // Load current month data
-        const monthResponse = await fetch(`/api/admin/month?monthYear=${encodeURIComponent(currentMonth)}`);
+        const monthYear = getCurrentMonthString();
+        const monthResponse = await fetch(`/api/admin/month?monthYear=${encodeURIComponent(monthYear)}`);
         const monthResult = await monthResponse.json();
         
         if (monthResult.success) {
@@ -106,20 +116,31 @@ async function loadAdminData() {
             populateCurrentMonthTable();
         }
 
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('currentMonthCard').style.display = 'block';
-        document.getElementById('allUnitsCard').style.display = 'block';
-
+        updateMonthDisplay();
+        
+        // FIXED: Check if elements exist before updating
+        const loadingEl = document.getElementById('loading');
+        const currentMonthCardEl = document.getElementById('currentMonthCard');
+        const allUnitsCardEl = document.getElementById('allUnitsCard');
+        
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (currentMonthCardEl) currentMonthCardEl.style.display = 'block';
+        if (allUnitsCardEl) allUnitsCardEl.style.display = 'block';
+        
     } catch (error) {
         console.error('Error loading admin data:', error);
-        document.getElementById('loading').style.display = 'none';
+        
+        // FIXED: Safe element updates in error handling
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) loadingEl.style.display = 'none';
+        
         showError('Failed to load data. Please try again.');
     }
 }
 
-// Populate units table
 function populateUnitsTable() {
     const tbody = document.getElementById('unitsTableBody');
+    if (!tbody) return;
     
     tbody.innerHTML = allUnits.map(unit => {
         const tenantCount = unit.tenant_names ? unit.tenant_names.split(',').filter(n => n.trim()).length : 0;
@@ -151,23 +172,31 @@ function populateUnitsTable() {
     }).join('');
 }
 
-// Open tenant modal
 window.openTenantModal = function(unitNumber, tenantNames) {
-    document.getElementById('tenantModalUnit').value = unitNumber;
-    document.getElementById('tenantModalTitle').textContent = `Edit Tenant Names - ${unitNumber}`;
-    document.getElementById('tenantNamesTextarea').value = tenantNames.split(',').join('\n');
-    document.getElementById('tenantModal').style.display = 'block';
+    const modalUnitEl = document.getElementById('tenantModalUnit');
+    const modalTitleEl = document.getElementById('tenantModalTitle');
+    const textareaEl = document.getElementById('tenantNamesTextarea');
+    const modalEl = document.getElementById('tenantModal');
+    
+    if (modalUnitEl && modalTitleEl && textareaEl && modalEl) {
+        modalUnitEl.value = unitNumber;
+        modalTitleEl.textContent = `Edit Tenant Names - ${unitNumber}`;
+        textareaEl.value = tenantNames.split(',').join('\n');
+        modalEl.style.display = 'block';
+    }
 }
 
-// Close tenant modal
 window.closeTenantModal = function() {
-    document.getElementById('tenantModal').style.display = 'none';
+    const modalEl = document.getElementById('tenantModal');
+    if (modalEl) modalEl.style.display = 'none';
 }
 
-// Save tenant names
 window.saveTenantNames = async function() {
-    const unitNumber = document.getElementById('tenantModalUnit').value;
+    const unitNumber = document.getElementById('tenantModalUnit')?.value;
     const textarea = document.getElementById('tenantNamesTextarea');
+    
+    if (!unitNumber || !textarea) return;
+    
     const names = textarea.value.split('\n').filter(name => name.trim()).join(',');
     
     try {
@@ -176,9 +205,7 @@ window.saveTenantNames = async function() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tenant_names: names })
         });
-
         const result = await response.json();
-
         if (result.success) {
             showSuccess('Tenant names updated successfully!');
             closeTenantModal();
@@ -192,9 +219,9 @@ window.saveTenantNames = async function() {
     }
 }
 
-// Populate current month table with inline editing and CORPUS column
 function populateCurrentMonthTable() {
     const tbody = document.getElementById('currentMonthBody');
+    if (!tbody) return;
     
     if (currentMonthData.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No data for this month. Click "Auto-Generate This Month" to create entries.</td></tr>';
@@ -251,7 +278,6 @@ function populateCurrentMonthTable() {
     }).join('');
 }
 
-// Update payment status
 window.updatePaymentStatus = async function(recordId, status) {
     const data = { status };
     
@@ -268,9 +294,7 @@ window.updatePaymentStatus = async function(recordId, status) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-
         const result = await response.json();
-
         if (result.success) {
             showSuccess('Payment status updated');
             loadAdminData();
@@ -285,64 +309,146 @@ window.updatePaymentStatus = async function(recordId, status) {
     }
 }
 
-// Auto-generate current month
-document.getElementById('autoGenerateBtn').addEventListener('click', async () => {
-    if (!confirm(`Generate billing for all units for ${currentMonthDisplay}?`)) return;
+// FIXED: Check if element exists before adding event listener
+const autoGenerateBtn = document.getElementById('autoGenerateBtn');
+if (autoGenerateBtn) {
+    autoGenerateBtn.addEventListener('click', async () => {
+        const monthYear = getCurrentMonthString();
+        const display = getCurrentMonthDisplay();
+        
+        if (!confirm(`Generate billing for all units for ${display}?`)) return;
 
+        try {
+            const response = await fetch('/api/admin/generate-month', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ month_year: monthYear })
+            });
+            const result = await response.json();
+            if (result.success) {
+                showSuccess('Month billing generated successfully!');
+                loadAdminData();
+            } else {
+                showError(result.error || 'Failed to generate billing');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showError('Failed to generate billing. Please try again.');
+        }
+    });
+}
+
+window.rolloverUnpaid = async function() {
+    if (!confirm('This will add unpaid bills from previous months to the current month. Continue?')) {
+        return;
+    }
+    
     try {
-        const response = await fetch('/api/admin/generate-month', {
+        const monthYear = getCurrentMonthString();
+        const response = await fetch('/api/admin/rollover-unpaid', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ month_year: currentMonth })
+            body: JSON.stringify({ current_month: monthYear })
         });
-
         const result = await response.json();
-
         if (result.success) {
-            showSuccess('Current month billing generated successfully!');
+            showSuccess(`Rolled over ${result.count} unpaid bills`);
             loadAdminData();
         } else {
-            showError(result.error || 'Failed to generate billing');
+            showError(result.error || 'Failed to rollover bills');
         }
     } catch (error) {
         console.error('Error:', error);
-        showError('Failed to generate billing. Please try again.');
+        showError('Failed to rollover bills');
     }
-});
+}
 
-// Show messages
 function showSuccess(message) {
     const el = document.getElementById('successMessage');
-    el.textContent = message;
-    el.style.display = 'block';
-    setTimeout(() => el.style.display = 'none', 3000);
+    if (el) {
+        el.textContent = message;
+        el.style.display = 'block';
+        setTimeout(() => {
+            if (el) el.style.display = 'none';
+        }, 3000);
+    }
 }
 
 function showError(message) {
     const el = document.getElementById('errorMessage');
-    el.textContent = message;
-    el.style.display = 'block';
-    setTimeout(() => el.style.display = 'none', 5000);
+    if (el) {
+        el.textContent = message;
+        el.style.display = 'block';
+        setTimeout(() => {
+            if (el) el.style.display = 'none';
+        }, 5000);
+    }
 }
 
-// Logout
-document.getElementById('logoutBtn').addEventListener('click', () => {
-    sessionStorage.removeItem('isAdmin');
-    window.location.href = 'index.html';
-});
+// FIXED: Check if element exists before adding event listener
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+        sessionStorage.removeItem('isAdmin');
+        window.location.href = 'index.html';
+    });
+}
 
-// Close modal when clicking outside
 window.onclick = function(event) {
     const modal = document.getElementById('tenantModal');
-    if (event.target === modal) {
+    if (event.target === modal && modal) {
         closeTenantModal();
     }
 }
 
-// Load data on page load
-loadAdminData();
+// Auto-refresh data to keep sync across pages
+let autoRefreshInterval;
 
-// Auto-refresh admin data every 15 seconds to keep data in sync
-setInterval(() => {
+function startAutoRefresh() {
+    // Stop any existing interval
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+    
+    // Load data immediately
     loadAdminData();
-}, 15000);
+    
+    // Set interval for auto-refresh (every 30 seconds)
+    autoRefreshInterval = setInterval(loadAdminData, 30000);
+}
+
+// Add auto-sync check for new month generation
+async function checkForNewMonthGeneration() {
+    try {
+        const response = await fetch('/api/admin/auto-generate-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json();
+        if (result.success) {
+            console.log('Month generation check completed');
+            loadAdminData(); // Reload to show new month if generated
+        }
+    } catch (error) {
+        console.error('Error checking for new month:', error);
+    }
+}
+
+// Wait for DOM to be fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    loadAdminData();
+    startAutoRefresh();
+    
+    // Check for new month generation on page load
+    setTimeout(checkForNewMonthGeneration, 1000);
+    
+    // Also check every hour
+    setInterval(checkForNewMonthGeneration, 3600000);
+});
+
+// Also call loadAdminData on window load as fallback
+window.addEventListener('load', function() {
+    if (!document.getElementById('unitsTableBody') || !document.getElementById('currentMonthBody')) {
+        loadAdminData();
+    }
+});

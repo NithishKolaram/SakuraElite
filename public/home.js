@@ -13,6 +13,20 @@ let currentMonthIndex = 0;
 let historyData = [];
 let unitData = {};
 
+// Get current month/year in MM/YYYY format
+function getCurrentMonthYear() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    return `${month}/${year}`;
+}
+
+// Parse month/year string to Date object for sorting
+function parseMonthYear(monthYear) {
+    const [month, year] = monthYear.split('/');
+    return new Date(parseInt(year), parseInt(month) - 1, 1);
+}
+
 // Format currency in rupees
 function formatRupees(amount) {
     return `₹${parseFloat(amount).toFixed(2)}`;
@@ -318,8 +332,21 @@ async function loadPaymentHistory() {
         const result = await response.json();
 
         if (result.success) {
-            historyData = result.data;
-            displayMonthlyData(0);
+            // Sort the data by date (newest first) on the client side
+            historyData = result.data.sort((a, b) => {
+                const dateA = parseMonthYear(a.month_year);
+                const dateB = parseMonthYear(b.month_year);
+                return dateB - dateA; // Descending order (newest first)
+            });
+            
+            // Find the index of the current month or most recent month
+            const currentMonthYear = getCurrentMonthYear();
+            const currentMonthIndex = historyData.findIndex(record => record.month_year === currentMonthYear);
+            
+            // If current month exists, show it; otherwise show the most recent (index 0)
+            const indexToShow = currentMonthIndex >= 0 ? currentMonthIndex : 0;
+            
+            displayMonthlyData(indexToShow);
             populateHistoryTable();
             populateFilterDropdowns();
         }
@@ -395,7 +422,7 @@ function displayMonthlyData(index) {
             </div>
             <div class="info-item">
                 <span class="label">Payment Method:</span>
-                <span class="value">${monthData.payment_method}</span>
+                <span class="value">${monthData.payment_method || '-'}</span>
             </div>
             ` : ''}
         </div>
@@ -407,13 +434,86 @@ function displayMonthlyData(index) {
 let currentFilterMonth = '';
 let currentFilterYear = '';
 
-// Populate complete history table with Pay Now buttons
+// Populate filter dropdowns with unique values - FIXED DUPLICATE ISSUE
+function populateFilterDropdowns() {
+    const months = new Set();
+    const years = new Set();
+
+    historyData.forEach(record => {
+        const [month, year] = record.month_year.split('/');
+        months.add(parseInt(month));
+        years.add(parseInt(year));
+    });
+
+    const monthSelect = document.getElementById('searchMonth');
+    const yearSelect = document.getElementById('searchYear');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Clear existing options (except the first placeholder)
+    while (monthSelect.options.length > 1) {
+        monthSelect.remove(1);
+    }
+    while (yearSelect.options.length > 1) {
+        yearSelect.remove(1);
+    }
+
+    // Add month options (sorted descending - newest first)
+    Array.from(months)
+        .sort((a, b) => b - a)
+        .forEach(month => {
+            const option = document.createElement('option');
+            option.value = String(month).padStart(2, '0');
+            option.textContent = monthNames[month - 1];
+            monthSelect.appendChild(option);
+        });
+
+    // Add year options (sorted descending - newest first, no duplicates)
+    Array.from(years)
+        .sort((a, b) => b - a)
+        .forEach(year => {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+        });
+}
+
+// Populate complete history table with enhanced styling
 function populateHistoryTable(dataToDisplay = null) {
     const tbody = document.getElementById('historyTableBody');
+    const footer = document.getElementById('historyTableFooter');
+    const filteredCountEl = document.getElementById('filteredCount');
+    const totalCountEl = document.getElementById('totalCount');
+    
     const data = dataToDisplay || historyData;
+    const totalRecords = historyData.length;
+    const filteredRecords = data.length;
+    
+    // Update counts
+    if (filteredCountEl) filteredCountEl.textContent = filteredRecords;
+    if (totalCountEl) totalCountEl.textContent = totalRecords;
+    
+    // Show/hide footer
+    if (footer) {
+        footer.style.display = totalRecords > 0 ? 'table-row-group' : 'none';
+    }
     
     if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center;">No payment history available</td></tr>';
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 40px;">
+                    <div class="no-data-state">
+                        <div style="font-size: 48px; margin-bottom: 16px; color: #e0e0e0;">📊</div>
+                        <h3 style="color: #666; margin-bottom: 8px;">No payment records found</h3>
+                        <p style="color: #999;">
+                            ${filteredRecords === 0 && totalRecords > 0 
+                                ? 'Try changing your filters' 
+                                : 'Your payment history will appear here'}
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        `;
         return;
     }
 
@@ -425,26 +525,42 @@ function populateHistoryTable(dataToDisplay = null) {
         const total = rent + waterBill + maintenance + corpus;
         const paidDate = record.paid_date ? new Date(record.paid_date).toLocaleDateString('en-IN') : '-';
         const paymentMethod = record.payment_method || '-';
+        
+        // Format payment method badge
+        const paymentMethodBadge = paymentMethod !== '-' 
+            ? `<span class="payment-method">${paymentMethod}</span>`
+            : '-';
 
+        // Pay Now button for pending payments
         const payButton = record.status === 'pending'
             ? `<button onclick="initiatePayment(${record.id}, '${record.month_year}')" 
-                class="primary-btn" style="padding: 8px 16px; font-size: 13px;">
-                Pay Now
+                class="pay-now-btn">
+                💳 Pay Now
               </button>`
-            : '<span style="color: #28a745; font-weight: 600;">✓ Paid</span>';
+            : `<div class="status-paid">✓ Paid</div>`;
 
         return `
             <tr>
-                <td><strong>${formatMonthYear(record.month_year)}</strong></td>
-                <td>${formatRupees(rent)}</td>
-                <td>${formatRupees(waterBill)}</td>
-                <td>${formatRupees(maintenance)}</td>
-                <td>${formatRupees(corpus)}</td>
-                <td><strong>${formatRupees(total)}</strong></td>
-                <td><span class="status-${record.status}">${record.status.charAt(0).toUpperCase() + record.status.slice(1)}</span></td>
+                <td>
+                    <div style="font-weight: 600; color: #1a1a1a;">${formatMonthYear(record.month_year)}</div>
+                    <div style="font-size: 11px; color: #999; margin-top: 2px;">${record.month_year}</div>
+                </td>
+                <td class="amount-cell">${formatRupees(rent)}</td>
+                <td class="amount-cell">${formatRupees(waterBill)}</td>
+                <td class="amount-cell">${formatRupees(maintenance)}</td>
+                <td class="amount-cell">${formatRupees(corpus)}</td>
+                <td class="total-amount">${formatRupees(total)}</td>
+                <td>
+                    ${record.status === 'paid' 
+                        ? '<span class="status-paid">Paid</span>' 
+                        : '<span class="status-pending">Pending</span>'
+                    }
+                </td>
                 <td>${paidDate}</td>
-                <td>${paymentMethod}</td>
-                <td>${payButton}</td>
+                <td>${paymentMethodBadge}</td>
+                <td>
+                    ${record.status === 'pending' ? payButton : '-'}
+                </td>
             </tr>
         `;
     }).join('');
@@ -475,36 +591,57 @@ function applyHistoryFilters() {
     populateHistoryTable(filtered);
 }
 
-// Populate filter dropdowns
-function populateFilterDropdowns() {
-    const months = new Set();
-    const years = new Set();
+// Export history to CSV
+document.getElementById('exportHistoryBtn')?.addEventListener('click', function() {
+    exportHistoryToCSV();
+});
 
+function exportHistoryToCSV() {
+    if (historyData.length === 0) {
+        showError('No data to export');
+        return;
+    }
+    
+    let csvContent = "Month/Year,Rent,Water Bill,Maintenance,Corpus,Total,Status,Paid Date,Payment Method\n";
+    
     historyData.forEach(record => {
-        const [month, year] = record.month_year.split('/');
-        months.add(parseInt(month));
-        years.add(parseInt(year));
+        const rent = parseFloat(record.rent) || 0;
+        const waterBill = parseFloat(record.water_bill) || 0;
+        const maintenance = parseFloat(record.maintenance) || 0;
+        const corpus = parseFloat(record.corpus) || 0;
+        const total = rent + waterBill + maintenance + corpus;
+        const paidDate = record.paid_date || '-';
+        const paymentMethod = record.payment_method || '-';
+        
+        const row = [
+            `"${formatMonthYear(record.month_year)}"`,
+            rent,
+            waterBill,
+            maintenance,
+            corpus,
+            total,
+            `"${record.status}"`,
+            `"${paidDate}"`,
+            `"${paymentMethod}"`
+        ].join(',');
+        
+        csvContent += row + "\n";
     });
-
-    const monthSelect = document.getElementById('searchMonth');
-    const yearSelect = document.getElementById('searchYear');
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    // Add month options
-    Array.from(months).sort((a, b) => b - a).forEach(month => {
-        const option = document.createElement('option');
-        option.value = String(month).padStart(2, '0');
-        option.textContent = monthNames[month - 1];
-        monthSelect.appendChild(option);
-    });
-
-    // Add year options
-    Array.from(years).sort((a, b) => b - a).forEach(year => {
-        const option = document.createElement('option');
-        option.value = year;
-        option.textContent = year;
-        yearSelect.appendChild(option);
-    });
+    
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `payment-history-${unitNumber}-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showSuccess('CSV export started');
 }
 
 // Show messages
@@ -528,6 +665,19 @@ function showError(message) {
 
 // Load unit details on page load
 loadUnitDetails();
+
+// Auto-refresh for resident view
+let homeAutoRefreshInterval;
+
+function startHomeAutoRefresh() {
+    // Load data immediately
+    loadPaymentHistory();
+    
+    // Set interval for auto-refresh (every 60 seconds)
+    homeAutoRefreshInterval = setInterval(() => {
+        loadPaymentHistory();
+    }, 60000);
+}
 
 // Navigation buttons
 document.getElementById('prevMonth').addEventListener('click', () => {
@@ -583,3 +733,8 @@ window.onclick = function(event) {
         closeTwoWheelersEditModal();
     }
 }
+
+// Start auto-refresh on page load
+window.addEventListener('load', () => {
+    startHomeAutoRefresh();
+});
