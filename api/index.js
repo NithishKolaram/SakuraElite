@@ -8,32 +8,114 @@ const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+// Get base URL for Vercel
+const isVercel = process.env.VERCEL === '1';
+const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null;
+const baseUrl = isVercel ? vercelUrl : `http://localhost:${process.env.PORT || 3000}`;
+
+console.log('Server configuration:', {
+  environment: isVercel ? 'Vercel Production' : 'Local',
+  baseUrl,
+  vercelUrl,
+  nodeEnv: process.env.NODE_ENV
+});
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// Middleware
-app.use(cors());
+// Enhanced CORS for Vercel
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:8080',
+      vercelUrl,
+      `https://${process.env.VERCEL_URL}`,
+    ].filter(Boolean); // Remove undefined/null values
+    
+    if (allowedOrigins.includes(origin) || origin.includes('localhost') || !isVercel) {
+      callback(null, true);
+    } else {
+      console.log('Blocked by CORS:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// NEW:
-const pool = new Pool({
+// Database configuration for Vercel
+let pool;
+if (isVercel && process.env.POSTGRES_URL) {
+  // Vercel PostgreSQL
+  pool = new Pool({
+    connectionString: process.env.POSTGRES_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
+  console.log('Using Vercel PostgreSQL connection');
+} else if (process.env.DATABASE_URL) {
+  // External PostgreSQL
+  pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
       rejectUnauthorized: false
     }
-})
+  });
+  console.log('Using external PostgreSQL connection');
+} else {
+  // Local development
+  pool = new Pool({
+    user: process.env.DB_USER || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    database: process.env.DB_DATABASE || 'sakura_elite',
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT || 5432,
+  });
+  console.log('Using local PostgreSQL connection');
+}
 
 // Test the connection
 pool.query('SELECT NOW()', (err, res) => {
   if (err) {
     console.error('Database connection error:', err);
   } else {
-    console.log('Database connected successfully:', res.rows[0]);
+    console.log('Database connected successfully');
   }
+});
+
+// ========== API ENDPOINTS ==========
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Server is running',
+    environment: isVercel ? 'Vercel' : 'Local',
+    baseUrl,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Payment configuration check
+app.get('/api/payment/config', (req, res) => {
+  res.json({
+    success: true,
+    razorpay_configured: !!process.env.RAZORPAY_KEY_ID,
+    environment: isVercel ? 'Vercel' : 'Local',
+    baseUrl,
+    api_path: '/api'
+  });
 });
 
 // Login endpoint
@@ -58,8 +140,6 @@ app.post('/api/login', async (req, res) => {
     
     const dbPin = parseInt(user.pin, 10);
     const inputPin = parseInt(pin, 10);
-    
-    console.log('PIN comparison - DB type:', typeof dbPin, 'Input type:', typeof inputPin, 'Match:', dbPin === inputPin);
     
     if (dbPin === inputPin) {
       console.log('✓ Login successful for:', unit);
@@ -102,11 +182,15 @@ app.put('/api/unit/:unitNumber/update', async (req, res) => {
   try {
     const unitNumber = req.params.unitNumber;
     const updates = req.body;
-    
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+
+    const ALLOWED_FIELDS = ['tenant_names', 'num_tenants', 'num_cars', 'num_two_wheelers'];
+    const fields = Object.keys(updates).filter(f => ALLOWED_FIELDS.includes(f));
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+    const values = fields.map(f => updates[f]);
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
+
     const result = await pool.query(
       `UPDATE units SET ${setClause} WHERE unit_number = $${fields.length + 1} RETURNING *`,
       [...values, unitNumber]
@@ -143,6 +227,37 @@ app.get('/api/unit/:unitNumber/history', async (req, res) => {
 });
 
 // ADMIN ENDPOINTS
+
+// Dashboard stats for a given month
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const monthYear = req.query.monthYear;
+    const [unitsResult, statsResult] = await Promise.all([
+      pool.query('SELECT COUNT(*) as total FROM units'),
+      pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'paid')    as paid_count,
+           COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
+           COALESCE(SUM(CASE WHEN status = 'paid' THEN rent + water_bill + maintenance + corpus ELSE 0 END), 0) as total_collected
+         FROM payment_history WHERE month_year = $1`,
+        [monthYear]
+      )
+    ]);
+    const d = statsResult.rows[0];
+    res.json({
+      success: true,
+      data: {
+        total_units:     parseInt(unitsResult.rows[0].total) || 0,
+        paid_count:      parseInt(d.paid_count) || 0,
+        pending_count:   parseInt(d.pending_count) || 0,
+        total_collected: parseFloat(d.total_collected) || 0
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Database error' });
+  }
+});
 
 // Get all units
 app.get('/api/admin/units', async (req, res) => {
@@ -190,20 +305,25 @@ app.post('/api/admin/generate-month', async (req, res) => {
     
     // Get all units
     const units = await pool.query('SELECT * FROM units ORDER BY unit_number');
-    
-    // Generate random water bills for each unit
-    const insertPromises = units.rows.map(unit => {
-      const waterBill = (Math.random() * (60 - 35) + 35).toFixed(2);
-      const maintenance = 0;
-      const corpus = 0;
-      return pool.query(
-        'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [unit.unit_number, month_year, unit.rent, waterBill, maintenance, corpus, 'pending']
-      );
-    });
-    
-    await Promise.all(insertPromises);
-    
+
+    // Insert all records inside a transaction so partial failures don't leave orphaned rows
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const unit of units.rows) {
+        await client.query(
+          'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [unit.unit_number, month_year, unit.rent, 0, 0, 0, 'pending']
+        );
+      }
+      await client.query('COMMIT');
+    } catch (insertErr) {
+      await client.query('ROLLBACK');
+      throw insertErr;
+    } finally {
+      client.release();
+    }
+
     res.json({ success: true, message: 'Month billing generated successfully' });
     
   } catch (err) {
@@ -246,11 +366,15 @@ app.put('/api/admin/unit/:unitNumber', async (req, res) => {
   try {
     const unitNumber = req.params.unitNumber;
     const updates = req.body;
-    
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+
+    const ALLOWED_FIELDS = ['rent', 'tenant_names', 'num_tenants', 'num_cars', 'num_two_wheelers'];
+    const fields = Object.keys(updates).filter(f => ALLOWED_FIELDS.includes(f));
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+    const values = fields.map(f => updates[f]);
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
+
     const result = await pool.query(
       `UPDATE units SET ${setClause} WHERE unit_number = $${fields.length + 1} RETURNING *`,
       [...values, unitNumber]
@@ -370,22 +494,44 @@ app.put('/api/water/reading/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const updates = req.body;
-    
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+
+    const ALLOWED_FIELDS = ['start_reading', 'end_reading', 'liters_consumed'];
+    const filteredUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([k]) => ALLOWED_FIELDS.includes(k))
+    );
+
+    if (Object.keys(filteredUpdates).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+
+    // Recalculate liters_consumed when start or end reading changes
+    if ('start_reading' in filteredUpdates || 'end_reading' in filteredUpdates) {
+      const current = await pool.query(
+        'SELECT start_reading, end_reading FROM water_meter_readings WHERE id = $1',
+        [id]
+      );
+      if (current.rows.length > 0) {
+        const startReading = filteredUpdates.start_reading ?? current.rows[0].start_reading ?? 0;
+        const endReading = filteredUpdates.end_reading ?? current.rows[0].end_reading ?? 0;
+        filteredUpdates.liters_consumed = Math.max(0, endReading - startReading);
+      }
+    }
+
+    const fields = Object.keys(filteredUpdates);
+    const values = Object.values(filteredUpdates);
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
+
     const result = await pool.query(
       `UPDATE water_meter_readings SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${fields.length + 1} RETURNING *`,
       [...values, id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Reading not found' });
     }
-    
+
     res.json({ success: true, data: result.rows[0] });
-    
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Database error' });
@@ -729,14 +875,57 @@ app.delete('/api/maintenance/expense/:id', async (req, res) => {
 
 // Test endpoint for payment API
 app.get('/api/payment/test', (req, res) => {
-  res.json({ success: true, message: 'Payment API is working' });
+  res.json({ success: true, message: 'Payment API is working', baseUrl });
 });
+
+// Check if current month needs to be auto-generated
+app.post('/api/admin/auto-generate-check', async (req, res) => {
+  try {
+    const now = new Date();
+    const month_year = `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+    const existing = await pool.query(
+      'SELECT COUNT(*) FROM payment_history WHERE month_year = $1',
+      [month_year]
+    );
+
+    res.json({
+      success: true,
+      month_year,
+      exists: parseInt(existing.rows[0].count) > 0
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Database error' });
+  }
+});
+
+// Rollover unpaid bills — no-op stub (feature not yet implemented)
+app.post('/api/admin/rollover-unpaid', async (req, res) => {
+  res.json({ success: true, count: 0, message: 'Rollover not yet implemented' });
+});
+
+// ========== CRITICAL FIX: PAYMENT ENDPOINTS ==========
 
 app.post('/api/payment/create-order', async (req, res) => {
   try {
-    const { amount, unit_number, payment_id, month_year } = req.body;
+    const { payment_id, unit_number, month_year } = req.body;
     
-    console.log('Create order request:', { payment_id, unit_number, month_year });
+    console.log('Create order request:', { 
+      payment_id, 
+      unit_number, 
+      month_year,
+      environment: isVercel ? 'Vercel' : 'Local',
+      baseUrl 
+    });
+    
+    if (!payment_id || !unit_number) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: payment_id and unit_number are required' 
+      });
+    }
     
     // Get payment details
     const paymentResult = await pool.query(
@@ -746,46 +935,114 @@ app.post('/api/payment/create-order', async (req, res) => {
     
     if (paymentResult.rows.length === 0) {
       console.log('Payment not found:', payment_id, unit_number);
-      return res.status(404).json({ success: false, error: 'Payment record not found' });
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Payment record not found. Please refresh the page and try again.' 
+      });
     }
     
     const payment = paymentResult.rows[0];
-    const totalAmount = parseFloat(payment.rent) + parseFloat(payment.water_bill) + 
-                       parseFloat(payment.maintenance || 0) + parseFloat(payment.corpus || 0);
+    const rent = parseFloat(payment.rent) || 0;
+    const waterBill = parseFloat(payment.water_bill) || 0;
+    const maintenance = parseFloat(payment.maintenance) || 0;
+    const corpus = parseFloat(payment.corpus) || 0;
+    const totalAmount = rent + waterBill + maintenance + corpus;
     
-    console.log('Payment details:', { totalAmount, status: payment.status });
+    console.log('Payment details:', { 
+      rent, 
+      waterBill, 
+      maintenance, 
+      corpus, 
+      totalAmount, 
+      status: payment.status 
+    });
+    
+    // Check if already paid
+    if (payment.status === 'paid') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'This payment has already been marked as paid.' 
+      });
+    }
+    
+    // Validate Razorpay credentials
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      console.error('Razorpay credentials not configured');
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Payment gateway not configured. Please contact administrator.' 
+      });
+    }
+    
+    // Minimum amount check for Razorpay
+    if (totalAmount < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Minimum payment amount is ₹1.00'
+      });
+    }
     
     // Create Razorpay order
     const options = {
-      amount: Math.round(totalAmount * 100), // Amount in paise
+      amount: Math.round(totalAmount * 100), // Amount in paise (1 INR = 100 paise)
       currency: 'INR',
-      receipt: `receipt_${payment_id}_${Date.now()}`,
+      receipt: `sakura_${payment_id}_${Date.now()}`,
       notes: {
         unit_number: unit_number,
-        payment_id: payment_id,
-        month_year: month_year
+        payment_id: payment_id.toString(),
+        month_year: month_year || payment.month_year,
+        environment: isVercel ? 'vercel' : 'local'
       }
     };
     
+    console.log('Creating Razorpay order with options:', {
+      amount: options.amount,
+      currency: options.currency,
+      receipt: options.receipt
+    });
+    
     const order = await razorpay.orders.create(options);
     
-    console.log('Razorpay order created:', order.id);
+    console.log('Razorpay order created successfully:', { 
+      order_id: order.id, 
+      amount: order.amount,
+      receipt: order.receipt 
+    });
     
     res.json({
       success: true,
       order_id: order.id,
       amount: order.amount,
       currency: order.currency,
-      key_id: process.env.RAZORPAY_KEY_ID
+      key_id: process.env.RAZORPAY_KEY_ID,
+      receipt: order.receipt,
+      unit_number: unit_number,
+      total_amount: totalAmount,
+      callback_url: `${baseUrl}/api/payment/verify`
     });
     
   } catch (error) {
-    console.error('Error creating order:', error.message);
-    res.status(500).json({ success: false, error: 'Failed to create payment order: ' + error.message });
+    console.error('❌ Error creating Razorpay order:', error.message);
+    console.error('Error details:', error);
+    
+    let errorMessage = 'Failed to create payment order';
+    
+    if (error.error && error.error.description) {
+      errorMessage = `Razorpay error: ${error.error.description}`;
+    } else if (error.message.includes('key_id')) {
+      errorMessage = 'Payment gateway configuration error. Please check Razorpay credentials.';
+    } else if (error.message.includes('amount')) {
+      errorMessage = 'Invalid payment amount. Amount must be greater than 0.';
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
-// Verify Razorpay payment signature and update database
 app.post('/api/payment/verify', async (req, res) => {
   try {
     const { 
@@ -796,6 +1053,28 @@ app.post('/api/payment/verify', async (req, res) => {
       unit_number
     } = req.body;
     
+    console.log('Payment verification request:', { 
+      razorpay_order_id: razorpay_order_id?.substring(0, 10) + '...', 
+      payment_id, 
+      unit_number,
+      environment: isVercel ? 'Vercel' : 'Local'
+    });
+    
+    // Validate required fields
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing payment verification data' 
+      });
+    }
+    
+    if (!payment_id || !unit_number) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing payment identification data' 
+      });
+    }
+    
     // Verify signature
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto
@@ -803,8 +1082,18 @@ app.post('/api/payment/verify', async (req, res) => {
       .update(sign.toString())
       .digest('hex');
     
+    console.log('Signature verification:', {
+      received_length: razorpay_signature?.length,
+      expected_length: expectedSign.length,
+      match: razorpay_signature === expectedSign
+    });
+    
     if (razorpay_signature !== expectedSign) {
-      return res.status(400).json({ success: false, error: 'Invalid payment signature' });
+      console.error('Invalid payment signature');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid payment signature. Payment verification failed.' 
+      });
     }
     
     // Signature is valid, update payment status in database
@@ -816,42 +1105,76 @@ app.post('/api/payment/verify', async (req, res) => {
            paid_date = $1, 
            payment_method = 'Razorpay',
            razorpay_order_id = $2,
-           razorpay_payment_id = $3
+           razorpay_payment_id = $3,
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = $4 AND unit_number = $5
        RETURNING *`,
       [paid_date, razorpay_order_id, razorpay_payment_id, payment_id, unit_number]
     );
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Payment record not found' });
+      console.error('Payment record not found after update:', { payment_id, unit_number });
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Payment record not found or already updated' 
+      });
     }
     
-    // Also update maintenance balance if maintenance/corpus was paid
     const payment = result.rows[0];
-    const maintenanceAmount = parseFloat(payment.maintenance || 0);
-    const corpusAmount = parseFloat(payment.corpus || 0);
+    console.log('Payment updated successfully:', { 
+      payment_id: payment.id, 
+      status: payment.status,
+      paid_date: payment.paid_date 
+    });
+    
+    // Also update maintenance balance if maintenance/corpus was paid
+    const maintenanceAmount = parseFloat(payment.maintenance) || 0;
+    const corpusAmount = parseFloat(payment.corpus) || 0;
     
     if (maintenanceAmount > 0 || corpusAmount > 0) {
-      const refreshUrl = process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}/api/maintenance/refresh-collected`
-        : '/api/maintenance/refresh-collected';
-
-    await fetch(refreshUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month_year: payment.month_year })
-      });
+      try {
+        // Use internal API call with relative URL
+        const refreshUrl = `/api/maintenance/refresh-collected`;
+        const refreshResponse = await fetch(`${baseUrl}${refreshUrl}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month_year: payment.month_year })
+        });
+        
+        if (refreshResponse.ok) {
+          console.log('Maintenance balance refreshed for:', payment.month_year);
+        } else {
+          console.warn('Failed to refresh maintenance balance:', await refreshResponse.text());
+        }
+      } catch (balanceError) {
+        console.error('Error refreshing maintenance balance:', balanceError.message);
+        // Don't fail the payment if balance refresh fails
+      }
     }
     
     res.json({ 
       success: true, 
       message: 'Payment verified and recorded successfully',
-      data: result.rows[0]
+      data: {
+        id: payment.id,
+        month_year: payment.month_year,
+        status: payment.status,
+        paid_date: payment.paid_date,
+        payment_method: payment.payment_method,
+        total_paid: parseFloat(payment.rent) + parseFloat(payment.water_bill) + 
+                    parseFloat(payment.maintenance) + parseFloat(payment.corpus)
+      }
     });
     
   } catch (error) {
-    console.error('Error verifying payment:', error);
-    res.status(500).json({ success: false, error: 'Failed to verify payment' });
+    console.error('❌ Error verifying payment:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to verify payment. Please contact administrator with your transaction ID.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -877,5 +1200,4 @@ app.get('/api/payment/details/:unitNumber/:monthYear', async (req, res) => {
   }
 });
 
-// ADD:
 module.exports = app;

@@ -16,8 +16,6 @@ const monthDisplay3 = document.getElementById('currentMonthDisplay3');
 if (monthDisplay2) monthDisplay2.textContent = currentMonthDisplay;
 if (monthDisplay3) monthDisplay3.textContent = currentMonthDisplay;
 
-document.getElementById('currentMonthDisplay').textContent = currentMonthDisplay;
-
 let pricePerLiter = 0;
 
 // Format currency
@@ -227,13 +225,6 @@ document.getElementById('calculateWaterBillsBtn').addEventListener('click', asyn
         showError('Failed to calculate bills');
     }
 });
-
-// Load all data 
-function loadAll() {
-    // Load summary first, then it will trigger meter readings reload
-    loadSummary();
-    loadTankerHistory();
-}
 
 // Navigation
 document.getElementById('backBtn').addEventListener('click', () => {

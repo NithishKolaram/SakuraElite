@@ -7,92 +7,139 @@
     <link rel="stylesheet" href="admin.css">
 </head>
 <body>
-    <div class="admin-container">
-        <header class="admin-header">
-            <h1>Admin Dashboard</h1>
-            <div class="header-actions">
-                <span id="currentMonthDisplay"></span>
-                <button class="logout-btn" onclick="window.location.href='water-management.html'">Water</button>
-                <button class="logout-btn" onclick="window.location.href='maintenance-management.html'">Maintenance</button>
-                <button id="logoutBtn" class="logout-btn">Logout</button>
-            </div>
-        </header>
 
-        <main class="admin-content">
-            <div class="loading" id="loading">Loading units...</div>
-            <div class="error-message" id="errorMessage"></div>
-            <div class="success-message" id="successMessage"></div>
+    <header class="admin-header">
+        <div class="header-brand">
+            <div class="brand-logo">SE</div>
+            <div>
+                <div class="brand-name">Sakura Elite</div>
+                <div class="brand-sub">Admin Dashboard</div>
+            </div>
+        </div>
+        <nav class="header-nav">
+            <a href="water-management.html" class="nav-link">Water</a>
+            <a href="maintenance-management.html" class="nav-link">Maintenance</a>
+            <button id="logoutBtn" class="btn btn-outline">Logout</button>
+        </nav>
+    </header>
 
-            <!-- Current Month Management -->
-            <div class="card" id="currentMonthCard" style="display: none;">
-                <div class="card-header">
-                    <h2>Current Month Billing (November 2025)</h2>
-                    <button id="autoGenerateBtn" class="primary-btn">Auto-Generate This Month</button>
+    <div class="admin-body">
+
+        <div id="toastContainer" class="toast-container"></div>
+
+        <!-- Stats strip -->
+        <div class="stats-strip">
+            <div class="stat-card">
+                <div class="stat-label">Total Units</div>
+                <div class="stat-value" id="statTotalUnits">—</div>
+            </div>
+            <div class="stat-card stat-paid">
+                <div class="stat-label">Paid</div>
+                <div class="stat-value" id="statPaid">—</div>
+            </div>
+            <div class="stat-card stat-pending">
+                <div class="stat-label">Pending</div>
+                <div class="stat-value" id="statPending">—</div>
+            </div>
+            <div class="stat-card stat-collected">
+                <div class="stat-label">Collected This Month</div>
+                <div class="stat-value" id="statCollected">—</div>
+            </div>
+        </div>
+
+        <!-- Collection progress bar -->
+        <div class="card progress-card">
+            <div class="progress-header">
+                <span class="progress-label">Collection Progress</span>
+                <span id="progressText" class="progress-text">—</span>
+            </div>
+            <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+            </div>
+        </div>
+
+        <!-- Billing table -->
+        <div class="card" id="currentMonthCard" style="display:none">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h2>Monthly Billing</h2>
+                    <div class="month-nav">
+                        <button class="month-nav-btn" id="prevMonthBtn" title="Previous month">&#8592;</button>
+                        <span id="currentMonthDisplay" class="month-label">—</span>
+                        <button class="month-nav-btn" id="nextMonthBtn" title="Next month">&#8594;</button>
+                    </div>
                 </div>
-                <div class="table-container">
-                    <table id="currentMonthTable">
-                        <thead>
-                            <tr>
-                                <th>Unit</th>
-                                <th>Rent (₹)</th>
-                                <th>Water Bill (₹)</th>
-                                <th>Maintenance (₹)</th>
-                                <th>Corpus (₹)</th>
-                                <th>Total (₹)</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="currentMonthBody">
-                            <!-- Will be populated dynamically -->
-                        </tbody>
-                    </table>
+                <div class="card-actions">
+                    <button id="autoGenerateBtn" class="btn btn-primary">Generate Month</button>
                 </div>
             </div>
-
-            <!-- All Units Overview -->
-            <div class="card" id="allUnitsCard" style="display: none;">
-                <h2>All Units - Base Information</h2>
-                <div class="table-container">
-                    <table id="unitsTable">
-                        <thead>
-                            <tr>
-                                <th>Unit</th>
-                                <th>Tenants</th>
-                                <th>Cars</th>
-                                <th>Two-Wheelers</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="unitsTableBody">
-                            <!-- Will be populated dynamically -->
-                        </tbody>
-                    </table>
-                </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Unit</th>
+                            <th>Rent (₹)</th>
+                            <th>Water (₹)</th>
+                            <th>Maint. (₹)</th>
+                            <th>Corpus (₹)</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Paid Date</th>
+                            <th>Method</th>
+                        </tr>
+                    </thead>
+                    <tbody id="currentMonthBody"></tbody>
+                </table>
             </div>
-        </main>
+        </div>
+
+        <!-- Units details table -->
+        <div class="card" id="allUnitsCard" style="display:none">
+            <div class="card-inner-header">
+                <h2>Unit Details</h2>
+                <span class="card-hint">Changes save automatically</span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Unit</th>
+                            <th>Monthly Rent (₹)</th>
+                            <th>Tenants</th>
+                            <th>Cars</th>
+                            <th>Two-Wheelers</th>
+                            <th>Tenant Names</th>
+                        </tr>
+                    </thead>
+                    <tbody id="unitsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
-    <!-- Tenant Names Modal -->
+    <!-- Tenant names modal -->
     <div id="tenantModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="tenantModalTitle">Edit Tenant Names</h3>
-                <span class="close" onclick="closeTenantModal()">&times;</span>
+                <button class="modal-close" onclick="closeTenantModal()">&#215;</button>
             </div>
-            <div style="padding: 32px;">
+            <div class="modal-body">
                 <input type="hidden" id="tenantModalUnit">
                 <div class="form-group">
-                    <label>Tenant Names (one per line)</label>
-                    <textarea id="tenantNamesTextarea" rows="6" style="width: 100%; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; font-family: inherit; font-size: 14px; resize: vertical;" placeholder="Enter tenant names, one per line"></textarea>
+                    <label>Names (one per line)</label>
+                    <textarea id="tenantNamesTextarea" rows="6" placeholder="Enter tenant names, one per line"></textarea>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="cancel-btn" onclick="closeTenantModal()">Cancel</button>
-                    <button type="button" class="primary-btn" onclick="saveTenantNames()">Save Names</button>
+                    <button class="btn btn-outline" onclick="closeTenantModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveTenantNames()">Save Names</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <div id="loadingOverlay" class="full-page-loading">Loading&hellip;</div>
 
     <script src="admin.js"></script>
 </body>

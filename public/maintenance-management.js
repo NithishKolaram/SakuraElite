@@ -96,7 +96,7 @@ if (updateBtn) {
             
             if (result.success) {
                 showSuccess('Collected amount updated successfully!');
-                await loadAll();
+                loadAll();
             } else {
                 showError(result.error || 'Failed to update collected amount');
             }
@@ -407,8 +407,3 @@ window.addEventListener('load', () => {
 document.addEventListener('DOMContentLoaded', function() {
     updateMonthDisplays();
 });
-
-// Auto-refresh balance every 10 seconds
-setInterval(() => {
-    loadBalance();
-}, 10000);

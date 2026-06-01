@@ -125,11 +125,15 @@ app.put('/api/unit/:unitNumber/update', async (req, res) => {
   try {
     const unitNumber = req.params.unitNumber;
     const updates = req.body;
-    
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+
+    const ALLOWED_FIELDS = ['tenant_names', 'num_tenants', 'num_cars', 'num_two_wheelers'];
+    const fields = Object.keys(updates).filter(f => ALLOWED_FIELDS.includes(f));
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+    const values = fields.map(f => updates[f]);
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
+
     const result = await pool.query(
       `UPDATE units SET ${setClause} WHERE unit_number = $${fields.length + 1} RETURNING *`,
       [...values, unitNumber]
@@ -166,6 +170,37 @@ app.get('/api/unit/:unitNumber/history', async (req, res) => {
 });
 
 // ADMIN ENDPOINTS
+
+// Dashboard stats for a given month
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const monthYear = req.query.monthYear;
+    const [unitsResult, statsResult] = await Promise.all([
+      pool.query('SELECT COUNT(*) as total FROM units'),
+      pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'paid')    as paid_count,
+           COUNT(*) FILTER (WHERE status = 'pending') as pending_count,
+           COALESCE(SUM(CASE WHEN status = 'paid' THEN rent + water_bill + maintenance + corpus ELSE 0 END), 0) as total_collected
+         FROM payment_history WHERE month_year = $1`,
+        [monthYear]
+      )
+    ]);
+    const d = statsResult.rows[0];
+    res.json({
+      success: true,
+      data: {
+        total_units:     parseInt(unitsResult.rows[0].total) || 0,
+        paid_count:      parseInt(d.paid_count) || 0,
+        pending_count:   parseInt(d.pending_count) || 0,
+        total_collected: parseFloat(d.total_collected) || 0
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Database error' });
+  }
+});
 
 // Get all units
 app.get('/api/admin/units', async (req, res) => {
@@ -269,11 +304,15 @@ app.put('/api/admin/unit/:unitNumber', async (req, res) => {
   try {
     const unitNumber = req.params.unitNumber;
     const updates = req.body;
-    
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+
+    const ALLOWED_FIELDS = ['rent', 'tenant_names', 'num_tenants', 'num_cars', 'num_two_wheelers'];
+    const fields = Object.keys(updates).filter(f => ALLOWED_FIELDS.includes(f));
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+    const values = fields.map(f => updates[f]);
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
+
     const result = await pool.query(
       `UPDATE units SET ${setClause} WHERE unit_number = $${fields.length + 1} RETURNING *`,
       [...values, unitNumber]
@@ -393,22 +432,44 @@ app.put('/api/water/reading/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const updates = req.body;
-    
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
+
+    const ALLOWED_FIELDS = ['start_reading', 'end_reading', 'liters_consumed'];
+    const filteredUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([k]) => ALLOWED_FIELDS.includes(k))
+    );
+
+    if (Object.keys(filteredUpdates).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+
+    // Recalculate liters_consumed when start or end reading changes
+    if ('start_reading' in filteredUpdates || 'end_reading' in filteredUpdates) {
+      const current = await pool.query(
+        'SELECT start_reading, end_reading FROM water_meter_readings WHERE id = $1',
+        [id]
+      );
+      if (current.rows.length > 0) {
+        const startReading = filteredUpdates.start_reading ?? current.rows[0].start_reading ?? 0;
+        const endReading = filteredUpdates.end_reading ?? current.rows[0].end_reading ?? 0;
+        filteredUpdates.liters_consumed = Math.max(0, endReading - startReading);
+      }
+    }
+
+    const fields = Object.keys(filteredUpdates);
+    const values = Object.values(filteredUpdates);
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
+
     const result = await pool.query(
       `UPDATE water_meter_readings SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${fields.length + 1} RETURNING *`,
       [...values, id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Reading not found' });
     }
-    
+
     res.json({ success: true, data: result.rows[0] });
-    
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Database error' });
@@ -920,39 +981,41 @@ async function checkAndGenerateNewMonth() {
       const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthStr = `${String(previousMonth.getMonth() + 1).padStart(2, '0')}/${previousMonth.getFullYear()}`;
       
-      // Get all units
-      const units = await pool.query('SELECT * FROM units ORDER BY unit_number');
-      
-      // Generate billing for each unit
-      const insertPromises = units.rows.map(async (unit) => {
-        // Calculate water bill based on average or fixed amount
-        const waterBill = (Math.random() * (60 - 35) + 35).toFixed(2);
-        
-        // Check for previous month's unpaid maintenance/corpus to carry forward
-        const previousPayment = await pool.query(
-          'SELECT * FROM payment_history WHERE unit_number = $1 AND month_year = $2',
-          [unit.unit_number, previousMonthStr]
-        );
-        
-        let maintenance = 0;
-        let corpus = 0;
-        
-        // If previous month exists and was unpaid, carry forward maintenance/corpus
-        if (previousPayment.rows.length > 0 && previousPayment.rows[0].status === 'pending') {
-          const prev = previousPayment.rows[0];
-          maintenance = parseFloat(prev.maintenance) || 0;
-          corpus = parseFloat(prev.corpus) || 0;
-          
-          console.log(`Carrying forward for ${unit.unit_number}: M=${maintenance}, C=${corpus}`);
+      // Get all units + previous month carry-forward data in one go
+      const [units, prevPayments] = await Promise.all([
+        pool.query('SELECT * FROM units ORDER BY unit_number'),
+        pool.query(
+          'SELECT unit_number, maintenance, corpus, status FROM payment_history WHERE month_year = $1',
+          [previousMonthStr]
+        )
+      ]);
+
+      const prevMap = {};
+      prevPayments.rows.forEach(r => { prevMap[r.unit_number] = r; });
+
+      // Wrap all inserts in a transaction so a partial failure rolls back cleanly
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const unit of units.rows) {
+          const prev        = prevMap[unit.unit_number];
+          const maintenance = (prev && prev.status === 'pending') ? (parseFloat(prev.maintenance) || 0) : 0;
+          const corpus      = (prev && prev.status === 'pending') ? (parseFloat(prev.corpus)      || 0) : 0;
+          if (maintenance > 0 || corpus > 0) {
+            console.log(`Carrying forward for ${unit.unit_number}: M=${maintenance}, C=${corpus}`);
+          }
+          await client.query(
+            'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [unit.unit_number, currentMonth, unit.rent, 0, maintenance, corpus, 'pending']
+          );
         }
-        
-        return pool.query(
-          'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [unit.unit_number, currentMonth, unit.rent, waterBill, maintenance, corpus, 'pending']
-        );
-      });
-      
-      await Promise.all(insertPromises);
+        await client.query('COMMIT');
+      } catch (insertErr) {
+        await client.query('ROLLBACK');
+        throw insertErr;
+      } finally {
+        client.release();
+      }
       console.log(`✓ Auto-generated billing for ${currentMonth}`);
       
       // Also carry forward maintenance balance
@@ -1020,6 +1083,11 @@ app.post('/api/admin/auto-generate-check', async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, error: 'Database error' });
   }
+});
+
+// Rollover unpaid bills — stub (feature not yet implemented)
+app.post('/api/admin/rollover-unpaid', async (req, res) => {
+  res.json({ success: true, count: 0, message: 'Rollover not yet implemented' });
 });
 
 // Start server
