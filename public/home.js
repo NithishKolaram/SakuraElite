@@ -347,8 +347,9 @@ async function loadPaymentHistory() {
             const indexToShow = currentMonthIndex >= 0 ? currentMonthIndex : 0;
             
             displayMonthlyData(indexToShow);
-            populateHistoryTable();
             populateFilterDropdowns();
+            applyHistoryFilters();   // show only current month by default
+            checkPastDue();
         }
     } catch (error) {
         console.error('Error loading history:', error);
@@ -430,9 +431,10 @@ function displayMonthlyData(index) {
     `;
 }
 
-// Filter state
-let currentFilterMonth = '';
-let currentFilterYear = '';
+// Filter state — default to current month/year
+const _now = new Date();
+let currentFilterMonth = String(_now.getMonth() + 1).padStart(2, '0');
+let currentFilterYear  = String(_now.getFullYear());
 
 // Populate filter dropdowns with unique values - FIXED DUPLICATE ISSUE
 function populateFilterDropdowns() {
@@ -476,6 +478,10 @@ function populateFilterDropdowns() {
             option.textContent = year;
             yearSelect.appendChild(option);
         });
+
+    // Default selects to current month/year
+    monthSelect.value = currentFilterMonth;
+    yearSelect.value  = currentFilterYear;
 }
 
 // Populate complete history table with enhanced styling
@@ -663,7 +669,56 @@ function showError(message) {
     setTimeout(() => el.remove(), 5000);
 }
 
-// Load unit details on page load
+// ── Past Due Alert ────────────────────────────────────────────────────────────
+
+function checkPastDue() {
+    const currentMonthYear = getCurrentMonthYear();
+    const overdue = historyData.filter(r => {
+        if (r.status !== 'pending') return false;
+        // Past due = pending AND month_year is before current month
+        return parseMonthYear(r.month_year) < parseMonthYear(currentMonthYear);
+    });
+
+    if (overdue.length === 0) return;
+
+    const modal  = document.getElementById('pastDueModal');
+    const list   = document.getElementById('pastDueList');
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    list.innerHTML = overdue.map(r => {
+        const [mm] = r.month_year.split('/');
+        const label = formatMonthYear(r.month_year);
+        const total = (parseFloat(r.rent) || 0) + (parseFloat(r.water_bill) || 0) +
+                      (parseFloat(r.maintenance) || 0) + (parseFloat(r.corpus) || 0);
+        return `<div style="display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #fed7d7;font-size:14px;">
+                    <span style="font-weight:500;">${label}</span>
+                    <span style="color:#c53030;font-weight:600;">${formatRupees(total)}</span>
+                </div>`;
+    }).join('');
+
+    modal.style.display = 'flex';
+
+    document.getElementById('pastDueDismiss').onclick = () => {
+        modal.style.display = 'none';
+    };
+
+    document.getElementById('pastDueViewAll').onclick = () => {
+        // Clear month/year filter so all records show
+        currentFilterMonth = '';
+        currentFilterYear  = '';
+        document.getElementById('searchMonth').value = '';
+        document.getElementById('searchYear').value  = '';
+        populateHistoryTable();
+        modal.style.display = 'none';
+        document.querySelector('.card:nth-child(3)').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    modal.addEventListener('click', e => {
+        if (e.target === modal) modal.style.display = 'none';
+    }, { once: false });
+}
+
+// ── Load unit details on page load ────────────────────────────────────────────
 loadUnitDetails();
 
 // Auto-refresh for resident view
@@ -711,10 +766,10 @@ document.getElementById('searchYear').addEventListener('change', (e) => {
 
 document.getElementById('clearSearch').addEventListener('click', () => {
     currentFilterMonth = '';
-    currentFilterYear = '';
+    currentFilterYear  = '';
     document.getElementById('searchMonth').value = '';
-    document.getElementById('searchYear').value = '';
-    populateHistoryTable();
+    document.getElementById('searchYear').value  = '';
+    populateHistoryTable(); // show all when cleared
 });
 
 // Close modals when clicking outside

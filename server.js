@@ -22,6 +22,8 @@ app.use(express.json());
 // Serve static files from current directory
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -246,22 +248,28 @@ app.post('/api/admin/generate-month', async (req, res) => {
       });
     }
     
-    // Get all units
     const units = await pool.query('SELECT * FROM units ORDER BY unit_number');
-    
-    // Generate random water bills for each unit
-    const insertPromises = units.rows.map(unit => {
-      const waterBill = (Math.random() * (60 - 35) + 35).toFixed(2);
-      const maintenance = 0;
-      const corpus = 0;
-      return pool.query(
-        'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [unit.unit_number, month_year, unit.rent, waterBill, maintenance, corpus, 'pending']
-      );
-    });
-    
-    await Promise.all(insertPromises);
-    
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const unit of units.rows) {
+        await client.query(
+          'INSERT INTO payment_history (unit_number, month_year, rent, water_bill, maintenance, corpus, status) VALUES ($1, $2, $3, 0, 0, 0, $4)',
+          [unit.unit_number, month_year, unit.rent, 'pending']
+        );
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    // Initialise water readings, carrying forward previous month's end readings
+    await initWaterReadings(month_year);
+
     res.json({ success: true, message: 'Month billing generated successfully' });
     
   } catch (err) {
@@ -366,9 +374,18 @@ app.get('/api/water/summary', async (req, res) => {
 // Get all tankers
 app.get('/api/water/tankers', async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM water_tankers ORDER BY tanker_date DESC'
-    );
+    const { monthYear } = req.query;
+    let result;
+    if (monthYear) {
+      result = await pool.query(
+        'SELECT * FROM water_tankers WHERE month_year = $1 ORDER BY tanker_date DESC',
+        [monthYear]
+      );
+    } else {
+      result = await pool.query(
+        'SELECT * FROM water_tankers ORDER BY tanker_date DESC'
+      );
+    }
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error(err);
@@ -403,6 +420,23 @@ app.delete('/api/water/tanker/:id', async (req, res) => {
     
     res.json({ success: true });
     
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Database error' });
+  }
+});
+
+// Initialise meter readings for a month (carries forward prev month end reading)
+app.post('/api/water/initialize-readings', async (req, res) => {
+  try {
+    const { month_year } = req.body;
+    if (!month_year) return res.status(400).json({ success: false, error: 'month_year required' });
+    await initWaterReadings(month_year);
+    const readings = await pool.query(
+      'SELECT * FROM water_meter_readings WHERE month_year = $1 ORDER BY unit_number',
+      [month_year]
+    );
+    res.json({ success: true, data: readings.rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Database error' });
@@ -460,7 +494,7 @@ app.put('/api/water/reading/:id', async (req, res) => {
     const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
 
     const result = await pool.query(
-      `UPDATE water_meter_readings SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${fields.length + 1} RETURNING *`,
+      `UPDATE water_meter_readings SET ${setClause} WHERE id = $${fields.length + 1} RETURNING *`,
       [...values, id]
     );
 
@@ -470,6 +504,44 @@ app.put('/api/water/reading/:id', async (req, res) => {
 
     res.json({ success: true, data: result.rows[0] });
 
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Database error' });
+  }
+});
+
+// Update meter reading by unit_number + month_year (no id dependency)
+app.put('/api/water/reading-by-unit', async (req, res) => {
+  try {
+    const { unit_number, month_year, end_reading } = req.body;
+    if (!unit_number || !month_year || end_reading === undefined) {
+      return res.status(400).json({ success: false, error: 'unit_number, month_year and end_reading are required' });
+    }
+
+    const current = await pool.query(
+      'SELECT start_reading FROM water_meter_readings WHERE unit_number = $1 AND month_year = $2',
+      [unit_number, month_year]
+    );
+    if (current.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Reading not found' });
+    }
+
+    const startReading = parseInt(current.rows[0].start_reading) || 0;
+    const endReading   = parseInt(end_reading);
+    const liters       = Math.max(0, endReading - startReading);
+
+    const result = await pool.query(
+      `UPDATE water_meter_readings
+         SET end_reading = $1, liters_consumed = $2
+       WHERE unit_number = $3 AND month_year = $4`,
+      [endReading, liters, unit_number, month_year]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Reading not found in database — try refreshing the page' });
+    }
+
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Database error' });
@@ -551,10 +623,25 @@ app.get('/api/maintenance/balance', async (req, res) => {
     );
     const totalExpenses = parseFloat(expensesResult.rows[0].total_expenses) || 0;
     
-    // Calculate closing balance
-    const openingBalance = result.rows.length > 0 ? parseFloat(result.rows[0].opening_balance) : 0;
+    // Calculate closing balance — auto carry-forward opening balance from previous month
+    let openingBalance = 0;
+    if (result.rows.length > 0) {
+      openingBalance = parseFloat(result.rows[0].opening_balance) || 0;
+    } else {
+      const [m, y] = monthYear.split('/');
+      const prevM = parseInt(m) === 1 ? 12 : parseInt(m) - 1;
+      const prevY = parseInt(m) === 1 ? parseInt(y) - 1 : parseInt(y);
+      const prevMonthYear = `${String(prevM).padStart(2, '0')}/${prevY}`;
+      const prevBal = await pool.query(
+        'SELECT closing_balance FROM maintenance_balance WHERE month_year = $1',
+        [prevMonthYear]
+      );
+      if (prevBal.rows.length > 0) {
+        openingBalance = parseFloat(prevBal.rows[0].closing_balance) || 0;
+      }
+    }
     const closingBalance = openingBalance + totalCollected - totalExpenses;
-    
+
     // Create or update balance record
     if (result.rows.length === 0) {
       await pool.query(
@@ -958,7 +1045,38 @@ app.get('/api/payment/details/:unitNumber/:monthYear', async (req, res) => {
   }
 });
 
-// server.js - Add this function before the app.listen() section
+// ── Helper: create meter readings for every unit, carrying forward prev month's end reading
+async function initWaterReadings(month_year) {
+  try {
+    const [m, y] = month_year.split('/');
+    const prevM = parseInt(m) === 1 ? 12 : parseInt(m) - 1;
+    const prevY = parseInt(m) === 1 ? parseInt(y) - 1 : parseInt(y);
+    const prevMonthYear = `${String(prevM).padStart(2, '0')}/${prevY}`;
+
+    const [unitsResult, prevReadings, existing] = await Promise.all([
+      pool.query('SELECT unit_number FROM units ORDER BY unit_number'),
+      pool.query('SELECT unit_number, end_reading FROM water_meter_readings WHERE month_year = $1', [prevMonthYear]),
+      pool.query('SELECT unit_number FROM water_meter_readings WHERE month_year = $1', [month_year])
+    ]);
+
+    const prevMap = {};
+    prevReadings.rows.forEach(r => { prevMap[r.unit_number] = parseInt(r.end_reading) || 0; });
+    const existingSet = new Set(existing.rows.map(r => r.unit_number));
+
+    for (const unit of unitsResult.rows) {
+      if (!existingSet.has(unit.unit_number)) {
+        const startReading = prevMap[unit.unit_number] || 0;
+        await pool.query(
+          'INSERT INTO water_meter_readings (unit_number, month_year, start_reading, end_reading, liters_consumed) VALUES ($1, $2, $3, $3, 0)',
+          [unit.unit_number, month_year, startReading]
+        );
+      }
+    }
+    console.log(`✓ Water readings initialized for ${month_year}`);
+  } catch (err) {
+    console.error('Error initializing water readings:', err);
+  }
+}
 
 // Function to check and auto-generate new month billing
 async function checkAndGenerateNewMonth() {
@@ -1017,8 +1135,11 @@ async function checkAndGenerateNewMonth() {
         client.release();
       }
       console.log(`✓ Auto-generated billing for ${currentMonth}`);
-      
-      // Also carry forward maintenance balance
+
+      // Initialise water meter readings (carries forward prev month's end reading as start)
+      await initWaterReadings(currentMonth);
+
+      // Carry forward maintenance balance
       await autoCarryForwardMaintenance(previousMonthStr, currentMonth);
     }
   } catch (err) {

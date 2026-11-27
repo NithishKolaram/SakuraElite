@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="data:,">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Maintenance | Sakura Elite</title>
     <link rel="stylesheet" href="admin.css">
@@ -117,20 +118,25 @@
             </div>
         </div>
 
-        <!-- Expense history this month -->
+        <!-- Expense history — current month -->
         <div class="card">
-            <div class="card-inner-header">
-                <h2>Expenses This Month</h2>
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h2>Expenses This Month</h2>
+                </div>
+                <div class="card-actions">
+                    <button id="viewAllHistoryBtn" class="btn btn-outline">View All History</button>
+                </div>
             </div>
             <div class="table-container">
-                <table>
+                <table class="expense-table">
                     <thead>
                         <tr>
                             <th>Date</th>
                             <th>Description</th>
-                            <th>Category</th>
+                            <th class="col-hide-xs">Category</th>
                             <th>Amount (₹)</th>
-                            <th>Notes</th>
+                            <th class="col-hide-xs">Notes</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -141,21 +147,29 @@
             </div>
         </div>
 
-        <!-- All expenses -->
-        <div class="card">
-            <div class="card-inner-header">
-                <h2>All Expense History</h2>
+        <!-- All expenses — hidden by default, shown via toggle -->
+        <div class="card" id="allHistoryCard" style="display:none;">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <h2>All Expense History</h2>
+                </div>
+                <div class="card-actions">
+                    <select id="historyMonthFilter" class="form-input" style="width:auto;">
+                        <option value="">All Months</option>
+                    </select>
+                    <button id="closeAllHistoryBtn" class="btn btn-outline">Close</button>
+                </div>
             </div>
             <div class="table-container">
-                <table>
+                <table class="expense-table">
                     <thead>
                         <tr>
                             <th>Date</th>
                             <th>Month</th>
                             <th>Description</th>
-                            <th>Category</th>
+                            <th class="col-hide-xs">Category</th>
                             <th>Amount (₹)</th>
-                            <th>Notes</th>
+                            <th class="col-hide-xs">Notes</th>
                             <th>Action</th>
                         </tr>
                     </thead>

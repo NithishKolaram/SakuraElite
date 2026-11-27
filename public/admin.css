@@ -333,11 +333,6 @@ body {
     color: var(--text);
 }
 
-.card-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
 .card-actions {
     display: flex;
     gap: 8px;
@@ -760,6 +755,39 @@ tbody tr:hover td { background: #f8fafc; }
 .fund-corpus      .fund-value { color: var(--blue); }
 
 /* ───────────────────────────────────────────
+   Category badge
+─────────────────────────────────────────── */
+.category-badge {
+    background: #edf2f7;
+    color: var(--text-muted);
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ───────────────────────────────────────────
+   Mobile table — sticky first column
+─────────────────────────────────────────── */
+.table-container {
+    position: relative;
+}
+
+thead th:first-child,
+tbody td:first-child {
+    position: sticky;
+    left: 0;
+    background: inherit;
+    z-index: 2;
+}
+
+thead th:first-child { background: #f7fafc; }
+tbody tr:hover td:first-child { background: #f8fafc; }
+.row-paid   td:first-child { background: #fff; }
+.row-pending td:first-child { background: #fff; }
+
+/* ───────────────────────────────────────────
    Responsive
 ─────────────────────────────────────────── */
 @media (max-width: 960px) {
@@ -781,13 +809,15 @@ tbody tr:hover td { background: #f8fafc; }
     .stat-value { font-size: 24px; }
     .stat-collected .stat-value { font-size: 17px; }
 
-    .card-header { padding: 14px 16px; }
+    .card-header { padding: 14px 16px; flex-direction: column; align-items: flex-start; }
     .card-inner-header { padding: 14px 16px 0; }
     .card-body { padding: 14px 16px; }
 
     .card-title-group { gap: 10px; }
+    .card-actions { width: 100%; }
+    .card-actions .btn { width: 100%; }
 
-    th, td { padding: 10px 10px; font-size: 12px; }
+    th, td { padding: 9px 10px; font-size: 12px; }
 
     .month-label { min-width: 80px; font-size: 13px; }
     .month-badge { font-size: 12px; padding: 4px 10px; }
@@ -801,4 +831,59 @@ tbody tr:hover td { background: #f8fafc; }
     .modal-header, .modal-body { padding: 16px; }
     .modal-actions { flex-direction: column-reverse; }
     .modal-actions .btn { width: 100%; }
+
+    /* Hide lower-priority columns on phones */
+    .col-hide-xs { display: none; }
+}
+
+/* ── Card-row view for very small phones (< 420 px) ── */
+@media (max-width: 420px) {
+    .table-container table,
+    .table-container thead,
+    .table-container tbody,
+    .table-container th,
+    .table-container td,
+    .table-container tr { display: block; }
+
+    .table-container thead { display: none; }
+
+    .table-container tbody tr {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+    }
+
+    /* Undo sticky for card view */
+    tbody td:first-child { position: static; }
+
+    .table-container td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: none;
+        padding: 5px 0;
+        font-size: 13px;
+        border-bottom: 1px solid #f0f4f8;
+    }
+
+    .table-container td:last-child { border-bottom: none; }
+
+    .table-container td::before {
+        content: attr(data-label);
+        font-weight: 700;
+        color: var(--text-muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        flex-shrink: 0;
+        margin-right: 12px;
+    }
+
+    /* Inline inputs fill remaining space */
+    .table-container td .inline-edit { width: 100%; max-width: 130px; }
+
+    .col-hide-xs { display: flex !important; }
 }

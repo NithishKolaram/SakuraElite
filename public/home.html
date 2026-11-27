@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="data:,">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unit Dashboard | Sakura Elite</title>
     <link rel="stylesheet" href="home.css">
@@ -207,6 +208,24 @@
                     <button type="button" class="cancel-btn" onclick="closeTwoWheelersEditModal()">Cancel</button>
                     <button type="button" class="primary-btn" onclick="saveTwoWheelersFromModal()">Save Changes</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Past Due Alert Popup -->
+    <div id="pastDueModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:14px;padding:2rem;width:420px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,0.22);border-top:5px solid #e53e3e;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;">
+                <div style="font-size:2rem;">⚠️</div>
+                <div>
+                    <div style="font-weight:700;font-size:1.05rem;color:#c53030;">Payment Overdue</div>
+                    <div style="font-size:13px;color:#666;margin-top:2px;">You have unpaid bills from previous months</div>
+                </div>
+            </div>
+            <div id="pastDueList" style="background:#fff5f5;border-radius:8px;padding:12px;margin-bottom:1.2rem;max-height:200px;overflow-y:auto;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button id="pastDueDismiss" style="padding:9px 18px;border-radius:7px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:14px;">Dismiss</button>
+                <button id="pastDueViewAll" style="padding:9px 18px;border-radius:7px;border:none;background:#e53e3e;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">View All Dues</button>
             </div>
         </div>
     </div>
